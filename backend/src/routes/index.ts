@@ -2,6 +2,7 @@ import { Router } from "express";
 import authRoutes from "../modules/auth/auth.routes";
 import { authenticate } from "../middlewares/auth.middleware";
 import { authorize } from "../middlewares/rbac.middleware";
+import { activityLogger } from "../middlewares/activity.middleware";
 
 const router = Router();
 
@@ -37,10 +38,13 @@ router.get("/health", async (_, res) => {
  *       403:
  *         description: Access denied
  */
+
+
 router.get(
   "/admin",
   authenticate,
   authorize(["ADMIN"]),
+  activityLogger("ADMIN_ENDPOINT_ACCESSED"),
   (_, res) => {
     res.json({ message: "Admin access granted" });
   }
