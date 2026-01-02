@@ -1,0 +1,1 @@
+export const AI_ENGINE_URL = "http://localhost:8000";

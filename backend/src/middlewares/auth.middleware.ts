@@ -1,9 +1,10 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { env } from "../config/env";
+import { JwtUser } from "../modules/auth/auth.types";
 
 export interface AuthRequest extends Request {
-  user?: any;
+  user?: JwtUser;
 }
 
 export const authenticate = (
@@ -13,16 +14,15 @@ export const authenticate = (
 ) => {
   const authHeader = req.headers.authorization;
 
-  if (!authHeader)
+  if (!authHeader) {
     return res.status(401).json({ error: "No token provided" });
-
-  const token = authHeader.split(" ")[1];
+  }
 
   try {
-    const decoded = jwt.verify(token, env.JWT_SECRET);
-    req.user = decoded;
+    const token = authHeader.split(" ")[1];
+    req.user = jwt.verify(token, env.JWT_SECRET) as JwtUser;
     next();
   } catch {
-    res.status(401).json({ error: "Invalid token" });
+    return res.status(401).json({ error: "Invalid token" });
   }
 };

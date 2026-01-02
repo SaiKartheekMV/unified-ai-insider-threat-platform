@@ -3,6 +3,10 @@ import authRoutes from "../modules/auth/auth.routes";
 import { authenticate } from "../middlewares/auth.middleware";
 import { authorize } from "../middlewares/rbac.middleware";
 import { activityLogger } from "../middlewares/activity.middleware";
+import { getRecentLogsByUser } from "../modules/logs/activity.fetch";
+import { detectRisk } from "../services/ai.service";
+import { raiseAlert } from "../modules/alerts/alert.service";
+import { AuthRequest } from "../middlewares/auth.middleware";
 
 const router = Router();
 
@@ -45,12 +49,25 @@ router.get(
   authenticate,
   authorize(["ADMIN"]),
   activityLogger("ADMIN_ENDPOINT_ACCESSED"),
-  (_, res) => {
-    res.json({ message: "Admin access granted" });
+  async (req: AuthRequest, res) => {
+    const userId = req.user!.id;
+
+    const logs = await getRecentLogsByUser(userId);
+    const aiResult = await detectRisk(logs);
+
+    if (aiResult.risk_level === "HIGH") {
+      raiseAlert(userId, aiResult.risk_level);
+    }
+
+    res.json({
+      message: "Admin access granted",
+      risk: aiResult
+    });
   }
 );
 
-// ✅ Mount auth routes
+
+// Mount auth routes
 router.use("/auth", authRoutes);
 
 export default router;
