@@ -1,23 +1,32 @@
+# app/api/detect.py
+
 from fastapi import APIRouter
-from app.schemas.request import DetectionRequest
+from pydantic import BaseModel
 from app.services.feature_extractor import extract_features
-from app.services.anomaly_model import load_model, train_model, predict
+from app.services.anomaly_model import AnomalyDetector
+
+
+class DetectRequest(BaseModel):
+    logs: list
 
 router = APIRouter()
+detector = AnomalyDetector()
+
 
 @router.post("/detect")
-def detect_anomaly(req: DetectionRequest):
-    features = extract_features([log.dict() for log in req.logs])
+def detect_anomaly(request: DetectRequest):
+    logs = request.logs
 
-    model = load_model()
-    if model is None:
-        model = train_model(features)
+    features = extract_features(logs)
+    scores, predictions = detector.predict(features)
 
-    scores = predict(model, features)
+    is_anomaly = -1 in predictions
 
-    risk = "HIGH" if max(scores) > 0.6 else "LOW"
-
-    return {
-        "risk_level": risk,
-        "anomaly_scores": scores
+    response = {
+        "is_anomaly": bool(is_anomaly),
+        "avg_anomaly_score": float(scores.mean()),
+        "confidence": float(abs(scores.mean())),
+        "events_analyzed": len(logs),
     }
+
+    return response
