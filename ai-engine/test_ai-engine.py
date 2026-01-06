@@ -1,9 +1,9 @@
 import numpy as np
 from app.services.hybrid_anomaly_engine import HybridAnomalyEngine
 
-# -----------------------------------------
+
 # Simulated feature vector (NORMAL-ish)
-# -----------------------------------------
+
 features_normal = np.array([
     6,     # action_frequency
     0.05,  # admin_ratio
@@ -28,9 +28,9 @@ result = engine.analyze(features_normal, feature_map_normal)
 print("\nNORMAL TEST RESULT")
 print(result)
 
-# -----------------------------------------
+
 # Simulated feature vector (SUSPICIOUS)
-# -----------------------------------------
+
 features_anomaly = np.array([
     25,    # action_frequency
     0.9,   # admin_ratio

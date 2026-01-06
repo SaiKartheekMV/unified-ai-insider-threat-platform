@@ -4,7 +4,7 @@ import { authenticate } from "../middlewares/auth.middleware";
 import { authorize } from "../middlewares/rbac.middleware";
 import { activityLogger } from "../middlewares/activity.middleware";
 import { getRecentLogsByUser } from "../modules/logs/activity.fetch";
-import { detectRisk } from "../services/ai.service";
+import { analyzeLogsWithAI } from "../services/ai.service";
 import { raiseAlert } from "../modules/alerts/alert.service";
 import { AuthRequest } from "../middlewares/auth.middleware";
 
@@ -53,10 +53,10 @@ router.get(
     const userId = req.user!.id;
 
     const logs = await getRecentLogsByUser(userId);
-    const aiResult = await detectRisk(logs);
+    const aiResult = await analyzeLogsWithAI(logs);
 
-    if (aiResult.risk_level === "HIGH") {
-      raiseAlert(userId, aiResult.risk_level);
+    if (aiResult.severity === "HIGH") {
+      raiseAlert(userId, aiResult.severity);
     }
 
     res.json({

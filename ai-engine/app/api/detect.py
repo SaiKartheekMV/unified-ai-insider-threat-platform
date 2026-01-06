@@ -22,11 +22,21 @@ def detect_anomaly(request: DetectRequest):
 
     is_anomaly = -1 in predictions
 
+    avg_score = float(scores.mean())
+    if avg_score < 0.3:
+        severity = "LOW"
+    elif avg_score < 0.7:
+        severity = "MEDIUM"
+    else:
+        severity = "HIGH"
+    
+    reasons = ["Anomaly detected in user activity"] if is_anomaly else []
+    
     response = {
         "is_anomaly": bool(is_anomaly),
-        "avg_anomaly_score": float(scores.mean()),
-        "confidence": float(abs(scores.mean())),
-        "events_analyzed": len(logs),
+        "risk_score": avg_score,
+        "severity": severity,
+        "reasons": reasons,
     }
 
     return response

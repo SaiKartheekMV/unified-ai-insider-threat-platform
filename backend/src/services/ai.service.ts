@@ -1,16 +1,31 @@
 import axios from "axios";
-import { AI_ENGINE_URL } from "../config/ai";
 
-export interface AILog {
-  user_id: string;
-  action: string;
-  ip_address: string;
-  created_at: string;
+const AI_ENGINE_URL = process.env.AI_ENGINE_URL || "http://127.0.0.1:8000";
+
+export interface AIDetectionResult {
+  is_anomaly: boolean;
+  risk_score: number;
+  severity: "LOW" | "MEDIUM" | "HIGH";
+  reasons: string[];
 }
 
-export const detectRisk = async (logs: AILog[]) => {
-  const res = await axios.post(`${AI_ENGINE_URL}/detect`, { logs }, {
-    timeout: 3000
-  });
-  return res.data;
+export const analyzeLogsWithAI = async (
+  logs: any[]
+): Promise<AIDetectionResult> => {
+  try {
+    const response = await axios.post(`${AI_ENGINE_URL}/detect`, {
+      logs,
+    });
+
+    return response.data;
+  } catch (err: any) {
+    console.error("❌ AI Engine call failed:", err.message);
+
+    return {
+      is_anomaly: false,
+      risk_score: 0,
+      severity: "LOW",
+      reasons: ["AI engine unavailable"],
+    };
+  }
 };
