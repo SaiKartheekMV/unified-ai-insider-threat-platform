@@ -20,8 +20,8 @@ def detect_anomaly(request: DetectRequest):
     features = extract_features(logs)
     scores, predictions = detector.predict(features)
 
-    actions = [log.get("action", "") for log in logs]
-    is_brute_force = any("MASS_SENSITIVE_DATA_EXFILTRATION" in a for a in actions)
+    latest_action = logs[0].get("action", "") if logs else ""
+    is_brute_force = "MASS_SENSITIVE_DATA_EXFILTRATION" in latest_action
 
     # In a brand new DB with sparse data, the Isolation Forest causes false positives.
     # We enforce a strict override to guarantee a perfect presentation.

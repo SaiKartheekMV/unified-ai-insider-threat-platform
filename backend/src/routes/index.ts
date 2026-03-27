@@ -73,6 +73,15 @@ router.get("/admin/alerts", authenticate, authorize(["ADMIN"]), async (req, res)
   res.json(result.rows);
 });
 
+router.get("/admin/logs", authenticate, authorize(["ADMIN"]), async (req, res) => {
+  try {
+    const result = await pgPool.query("SELECT l.*, u.email FROM activity_logs l JOIN users u ON l.user_id = u.id ORDER BY l.created_at DESC LIMIT 50");
+    res.json(result.rows);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get("/admin/timeline", authenticate, authorize(["ADMIN"]), async (req, res) => {
   try {
     const alerts = await pgPool.query(`SELECT date_trunc('hour', created_at) as time, COUNT(*) as count FROM alerts GROUP BY time ORDER BY time DESC LIMIT 24`);
@@ -96,9 +105,27 @@ router.post("/platform/ingest", async (req, res) => {
     if (!userId || !action) return res.status(400).json({ error: "Missing required fields" });
     
     // Check if user is already locked to prevent alert spam
-    const userCheck = await pgPool.query("SELECT is_active FROM users WHERE id = $1", [userId]);
-    if (userCheck.rows[0] && !userCheck.rows[0].is_active) {
+    const userCheck = await pgPool.query("SELECT role, is_active FROM users WHERE id = $1", [userId]);
+    const { role, is_active } = userCheck.rows[0];
+    if (!is_active) {
       return res.status(201).json({ message: "Log rejected. User is quarantined.", risk: "HIGH" });
+    }
+
+    const isEmployee = role === "EMPLOYEE";
+    const isEditAttempt = action === "EDIT_EMPLOYEE_RECORD";
+    const isAddAttempt = action === "ADD_NEW_EMPLOYEE_RECORD";
+    const isDeleteAttempt = action === "DELETE_EMPLOYEE_RECORD";
+
+    // Privilege Escalation Trapdoor!
+    // Medium risk for edit/add attempts, high risk for delete attempts.
+    if (isEmployee && (isEditAttempt || isAddAttempt || isDeleteAttempt)) {
+      await logActivity({ userId, action: "PRIVILEGE_ESCALATION_ATTEMPT", ipAddress, userAgent });
+      if (isDeleteAttempt) {
+        await raiseAlert(userId, "HIGH", ["Unauthorized Privilege Escalation: Attempted to delete employee records."]);
+        return res.status(201).json({ message: "quarantined", risk: "HIGH" });
+      }
+      await raiseAlert(userId, "MEDIUM", ["Unauthorized Privilege Escalation: Attempted to edit/add employee records."]);
+      return res.status(201).json({ message: "flagged", risk: "MEDIUM" });
     }
 
     await logActivity({ userId, action, ipAddress, userAgent });
@@ -118,6 +145,24 @@ router.post("/platform/ingest", async (req, res) => {
   }
 });
 
+router.post("/platform/capture", async (req, res) => {
+  try {
+    const { userId, image } = req.body;
+    if (!userId || !image) return res.status(400).json({ error: "Missing data" });
+    
+    // Attach the covert webcam image to the most recent Active Alert for this user
+    await pgPool.query(
+      `UPDATE alerts SET capture_image = $1 WHERE id = (
+         SELECT id FROM alerts WHERE user_id = $2 AND resolved = false ORDER BY created_at DESC LIMIT 1
+       )`, [image, userId]
+    );
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Camera storage fault:", err.message);
+    res.status(500).json({ error: "Camera storage failed" });
+  }
+});
+
 
 
 router.get("/users", authenticate, authorize(["ADMIN"]), async (req, res) => {
@@ -131,7 +176,10 @@ router.post("/admin/lock/:id", authenticate, authorize(["ADMIN"]), async (req, r
   res.json({ message: "User locked manually" });
 });
 
-// Mount auth routes
+import emsRoutes from "./ems.routes";
+
+// Mount API subsets
+router.use("/ems", emsRoutes);
 router.use("/auth", authRoutes);
 
 export default router;

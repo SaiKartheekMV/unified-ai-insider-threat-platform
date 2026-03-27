@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import api from "@/lib/axios";
-import { ShieldAlert, Users, Activity } from "lucide-react";
+import { ShieldAlert, Users, Activity, Lock, Unlock, UserCheck, Shield, MonitorSmartphone, MapPin, X } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { motion } from "framer-motion";
 
@@ -10,14 +10,18 @@ export default function DashboardOverview() {
   const [stats, setStats] = useState({ users: 0, alerts: 0, locked: 0 });
   const [loading, setLoading] = useState(true);
   const [chartData, setChartData] = useState<any[]>([]);
+  const [liveLogs, setLiveLogs] = useState<any[]>([]);
+  const [alertsList, setAlertsList] = useState<any[]>([]);
+  const [activeIncident, setActiveIncident] = useState<any>(null);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const [usersRes, alertsRes, timelineRes] = await Promise.all([
+        const [usersRes, alertsRes, timelineRes, logsRes] = await Promise.all([
           api.get("/users"),
           api.get("/admin/alerts"),
-          api.get("/admin/timeline")
+          api.get("/admin/timeline"),
+          api.get("/admin/logs")
         ]);
         
         const users = usersRes.data;
@@ -28,6 +32,9 @@ export default function DashboardOverview() {
           alerts: alerts.filter((a: any) => !a.resolved).length,
           locked: users.filter((u: any) => !u.is_active).length,
         });
+        
+        // Extract Mugshots
+        setAlertsList(alerts.filter((a: any) => a.capture_image && !a.resolved));
 
         // Parse real backend timeline data
         const timelineData = new Map();
@@ -48,6 +55,7 @@ export default function DashboardOverview() {
         });
 
         setChartData(Array.from(timelineData.values()));
+        setLiveLogs(logsRes.data);
 
       } catch (err) {
         console.error("Failed to load stats", err);
@@ -76,6 +84,42 @@ export default function DashboardOverview() {
   const childVariants: any = {
     hidden: { opacity: 0, y: 20 },
     show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
+  };
+
+  const getBaselineStatus = (alert: any) => {
+    const severity = String(alert?.severity || "").toUpperCase();
+    if (severity === "HIGH") return { label: "Critical Deviation", className: "bg-red-500/15 text-red-400 border-red-500/30" };
+    if (severity === "MEDIUM") return { label: "Deviating", className: "bg-amber-500/15 text-amber-400 border-amber-500/30" };
+    return { label: "Baseline OK", className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" };
+  };
+
+  const getLatestLogForAlert = (alert: any) => {
+    if (!alert) return null;
+    const byEmail = liveLogs.find((l: any) => l.email && alert.email && l.email === alert.email);
+    return byEmail || liveLogs[0] || null;
+  };
+
+  const getUserRiskTimeline = (alert: any, max = 8) => {
+    if (!alert?.email) return [];
+    return liveLogs.filter((l: any) => l.email === alert.email).slice(0, max);
+  };
+
+  const handleQuarantine = async (alert: any) => {
+    try {
+      if (!alert?.user_id) return;
+      await api.post(`/admin/lock/${alert.user_id}`);
+    } catch (err) {
+      console.error("Failed to lock user", err);
+    }
+  };
+
+  const handleUnlock = async (alert: any) => {
+    try {
+      if (!alert?.user_id) return;
+      await api.post(`/admin/unlock/${alert.user_id}`);
+    } catch (err) {
+      console.error("Failed to unlock user", err);
+    }
   };
 
   return (
@@ -163,6 +207,163 @@ export default function DashboardOverview() {
           </ResponsiveContainer>
         </div>
       </motion.div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Live Endpoint Telemetry Log Feed */}
+        <motion.div variants={childVariants} className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl relative">
+          <h2 className="text-xl font-bold text-white mb-6 tracking-wide flex items-center gap-2">
+            <Activity className="w-5 h-5 text-blue-500" /> Live Endpoint Telemetry
+          </h2>
+          <div className="h-64 overflow-y-auto space-y-3 pr-2 telemetry-scroll">
+            {liveLogs.map((log: any, i: number) => (
+              <div key={i} className="bg-slate-800/40 p-3 rounded-xl border border-slate-700/50 flex flex-col md:flex-row md:items-center justify-between gap-4 text-sm hover:bg-slate-800/70 transition-colors">
+                  <div className="flex items-center gap-3 w-1/3">
+                    <div className="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.6)] animate-pulse shrink-0" />
+                    <span className="text-blue-400 font-mono font-bold truncate">{log.action}</span>
+                  </div>
+                  <div className="flex items-center gap-6 text-slate-400 font-mono text-xs w-2/3 justify-end">
+                    <span className="truncate max-w-[150px]">{log.email}</span>
+                    <span className="px-2 py-1 bg-slate-950 rounded-lg border border-slate-800">{log.ip_address}</span>
+                    <span className="text-slate-500">{new Date(log.created_at).toLocaleTimeString()}</span>
+                  </div>
+              </div>
+            ))}
+            {liveLogs.length === 0 && (
+              <div className="text-slate-500 text-center py-10 font-mono text-sm">Waiting for incoming telemetry events...</div>
+            )}
+          </div>
+        </motion.div>
+
+        {/* Covert Security Camera Feed */}
+        <motion.div variants={childVariants} className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl relative">
+          <h2 className="text-xl font-bold text-white mb-6 tracking-wide flex items-center gap-2">
+            <ShieldAlert className="w-5 h-5 text-red-500 animate-pulse" /> Active Intruder Imagery
+          </h2>
+          <div className="grid grid-cols-2 gap-4 h-64 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-700">
+            {alertsList.map((alert: any, i: number) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    setActiveIncident(alert);
+                  }}
+                  className="bg-slate-950 rounded-xl border border-red-500/30 overflow-hidden relative group h-32 shadow-inner text-left"
+                >
+                  <img src={alert.capture_image} alt="Intruder" className="w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity" />
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-red-950 flex flex-col justify-end to-transparent p-2 pt-8">
+                      <p className="text-red-400 font-mono text-[11px] font-bold truncate drop-shadow-md">{alert.email}</p>
+                      <p className="text-slate-300 font-mono text-[9px] drop-shadow-md">{new Date(alert.created_at).toLocaleTimeString()}</p>
+                  </div>
+                  <div className={`absolute top-2 left-2 px-2 py-1 text-[9px] uppercase font-bold border rounded-md ${getBaselineStatus(alert).className}`}>
+                    {getBaselineStatus(alert).label}
+                  </div>
+                  <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,1)] animate-pulse" />
+                </button>
+            ))}
+            {alertsList.length === 0 && (
+                <div className="col-span-2 flex items-center justify-center text-slate-600 text-center py-10 font-mono text-sm border-2 border-dashed border-slate-800 rounded-xl">
+                  No visual threat imagery confirmed...
+                </div>
+            )}
+          </div>
+        </motion.div>
+      </div>
+
+      {activeIncident && (
+        <div className="fixed inset-0 z-50 flex">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => {
+              setActiveIncident(null);
+            }}
+          />
+          <div className="ml-auto h-full w-full max-w-md bg-slate-950 border-l border-slate-800 shadow-2xl relative z-10 flex flex-col">
+            <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-slate-500">Incident Response</p>
+                <h3 className="text-xl font-bold text-white truncate">{activeIncident.email}</h3>
+              </div>
+              <button
+                onClick={() => {
+                  setActiveIncident(null);
+                }}
+                className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6 overflow-y-auto">
+              <div className="rounded-2xl overflow-hidden border border-red-500/30">
+                <img src={activeIncident.capture_image} alt="Intruder" className="w-full object-cover" />
+              </div>
+
+              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400 text-xs uppercase">Baseline</span>
+                  <span className={`px-2 py-1 text-[10px] uppercase font-bold border rounded-md ${getBaselineStatus(activeIncident).className}`}>
+                    {getBaselineStatus(activeIncident).label}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-slate-300 text-sm">
+                  <Shield className="w-4 h-4 text-orange-400" />
+                  Severity: {String(activeIncident.severity || "UNKNOWN").toUpperCase()}
+                </div>
+                <div className="flex items-center gap-2 text-slate-300 text-sm">
+                  <UserCheck className="w-4 h-4 text-blue-400" />
+                  Captured: {new Date(activeIncident.created_at).toLocaleString()}
+                </div>
+              </div>
+
+              {(() => {
+                const log = getLatestLogForAlert(activeIncident);
+                return (
+                  <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-3">
+                    <p className="text-xs uppercase text-slate-500 font-semibold">Device Fingerprint</p>
+                    <div className="flex items-center gap-2 text-slate-300 text-sm">
+                      <MonitorSmartphone className="w-4 h-4 text-emerald-400" />
+                      {log?.user_agent || "Unknown device"}
+                    </div>
+                    <div className="flex items-center gap-2 text-slate-300 text-sm">
+                      <MapPin className="w-4 h-4 text-emerald-400" />
+                      {log?.ip_address || "Unknown IP"}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-3">
+                <p className="text-xs uppercase text-slate-500 font-semibold">Risk Timeline</p>
+                <div className="space-y-2 max-h-44 overflow-y-auto pr-1 telemetry-scroll">
+                  {getUserRiskTimeline(activeIncident).map((log: any, idx: number) => (
+                    <div key={`${log.id || log.created_at}-${idx}`} className="flex items-center justify-between text-xs text-slate-300 bg-slate-950/60 border border-slate-800 rounded-lg px-3 py-2">
+                      <span className="font-mono truncate max-w-[180px]">{log.action}</span>
+                      <span className="text-slate-500 font-mono">{new Date(log.created_at).toLocaleTimeString()}</span>
+                    </div>
+                  ))}
+                  {getUserRiskTimeline(activeIncident).length === 0 && (
+                    <div className="text-slate-500 text-xs font-mono">No recent events for this user.</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => handleQuarantine(activeIncident)}
+                  className="px-4 py-3 bg-red-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-red-700 transition-colors"
+                >
+                  <Lock className="w-4 h-4" /> Quarantine
+                </button>
+                <button
+                  onClick={() => handleUnlock(activeIncident)}
+                  className="px-4 py-3 bg-emerald-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-emerald-700 transition-colors"
+                >
+                  <Unlock className="w-4 h-4" /> Unlock
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }
