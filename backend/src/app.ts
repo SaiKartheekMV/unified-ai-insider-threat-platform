@@ -7,7 +7,7 @@ import { swaggerSpec } from "./config/swagger";
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "20mb" }));
 
 app.use("/api", routes);
 app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));

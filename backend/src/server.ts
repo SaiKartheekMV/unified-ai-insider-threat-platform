@@ -5,7 +5,12 @@ import { connectRedis } from "./config/redis";
 
 const startServer = async () => {
   await connectPostgres();
-  await connectRedis();
+  
+  try {
+    await connectRedis();
+  } catch(e) {
+    console.warn("⚠️ Redis not available. Running without session caching.");
+  }
 
   app.listen(env.PORT, () => {
     console.log(`🚀 Backend running on port ${env.PORT}`);

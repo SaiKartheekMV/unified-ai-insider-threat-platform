@@ -2,7 +2,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { env } from "../../config/env";
 import { pgPool } from "../../config/db";
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "crypto";
 
 export const registerUser = async (
   email: string,
@@ -13,7 +13,7 @@ export const registerUser = async (
 
   await pgPool.query(
     "INSERT INTO users (id, email, password_hash, role) VALUES ($1,$2,$3,$4)",
-    [uuidv4(), email, hash, role]
+    [randomUUID(), email, hash, role]
   );
 };
 

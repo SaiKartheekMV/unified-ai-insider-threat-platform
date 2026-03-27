@@ -10,8 +10,7 @@ export const connectRedis = async () => {
     await redisClient.connect();
     console.log("✅ Redis connected");
   } catch (error) {
-    console.error("❌ Redis connection failed");
-    console.error(error);
-    process.exit(1);
+    console.error("❌ Redis connection failed. Local development without Redis.");
+    // removed process.exit(1) to allow app to start
   }
 };
